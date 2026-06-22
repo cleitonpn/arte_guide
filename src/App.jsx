@@ -2,19 +2,26 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Download, FileImage, FileType, User, Tag, Plus, Trash2,
   Layers, Scissors, MapPin, Upload, Image as ImageIcon, X,
+  Copy, Pencil, FileDown, FileUp, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 
 import ProjectCover from './components/ProjectCover';
 import ArtPreview from './components/ArtPreview';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useIndexedDbState } from './hooks/useIndexedDbState';
 import { indexToLabel } from './utils/labels';
+import { areaM2 } from './utils/units';
+import { diffMarkers } from './utils/markers';
 import { generatePdf } from './utils/pdf';
+
+const PROJECT_FILE_VERSION = 1;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('projeto');
 
-  // Projeto (capa com múltiplas vistas) — persistido.
-  const [projectViews, setProjectViews] = useLocalStorage('ag.projectViews', []);
+  // Projeto (capa com múltiplas vistas) — persistido no IndexedDB,
+  // porque as imagens em base64 estouram a cota do localStorage.
+  const [projectViews, setProjectViews] = useIndexedDbState('ag.projectViews', []);
   const [activeViewId, setActiveViewId] = useState(null);
 
   // Gabarito atual — persistido (exceto markerRef, que é transitório).
@@ -39,6 +46,7 @@ export default function App() {
   const coverRefs = useRef(new Map());
   const artRefs = useRef(new Map());
   const imageInputRef = useRef(null);
+  const projectInputRef = useRef(null);
 
   const currentArt = {
     id: 'current', clientName, itemName, markerRef, title,
@@ -115,6 +123,76 @@ export default function App() {
     setSavedArts((prev) => prev.filter((art) => art.id !== id));
   };
 
+  // Carrega os campos de uma peça no formulário (usado por editar/duplicar).
+  const loadArtIntoForm = (art) => {
+    setClientName(art.clientName ?? '');
+    setItemName(art.itemName ?? '');
+    setMarkerRef(art.markerRef ?? '');
+    setTitle(art.title ?? '');
+    setWidthStr(art.widthStr ?? '');
+    setHeightStr(art.heightStr ?? '');
+    setUnit(art.unit ?? 'cm');
+    setBleedStr(art.bleedStr ?? '0');
+    setBleedUnit(art.bleedUnit ?? 'cm');
+    setZones(art.zones ?? []);
+  };
+
+  // Editar: traz a peça de volta ao formulário e a remove da lista.
+  const handleEditArt = (art) => {
+    loadArtIntoForm(art);
+    setSavedArts((prev) => prev.filter((a) => a.id !== art.id));
+    showToast('success', 'Peça carregada no formulário para edição.');
+  };
+
+  // Duplicar: cria uma cópia logo após o item original.
+  const handleDuplicateArt = (art) => {
+    setSavedArts((prev) => {
+      const idx = prev.findIndex((a) => a.id === art.id);
+      const copy = { ...art, id: Date.now(), zones: art.zones.map((z) => ({ ...z })) };
+      const next = [...prev];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+  };
+
+  const handleExportProject = () => {
+    const data = {
+      version: PROJECT_FILE_VERSION,
+      exportedAt: new Date().toISOString(),
+      current: currentArt,
+      savedArts,
+      projectViews,
+    };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = clientName ? `Projeto_${clientName.replace(/\s+/g, '_')}.json` : 'Projeto.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportProject = (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data || typeof data !== 'object') throw new Error('formato inválido');
+        if (Array.isArray(data.projectViews)) setProjectViews(data.projectViews);
+        if (Array.isArray(data.savedArts)) setSavedArts(data.savedArts);
+        if (data.current) loadArtIntoForm(data.current);
+        showToast('success', 'Projeto importado com sucesso.');
+      } catch (err) {
+        console.error('Falha ao importar projeto', err);
+        showToast('error', 'Arquivo de projeto inválido.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const addZone = () => {
     setZones((prev) => [...prev, {
       id: Date.now(), label: 'Corte/Furo', type: 'rect',
@@ -165,6 +243,15 @@ export default function App() {
   const activeView = projectViews.find((v) => v.id === activeViewId);
   const totalPages = projectViews.length + (savedArts.length > 0 ? savedArts.length : 1);
 
+  // Resumo de produção (peças salvas) e consistência marcador ↔ gabarito.
+  const totalAreaM2 = savedArts.reduce(
+    (acc, a) => acc + areaM2(a.widthStr, a.heightStr, a.unit),
+    0,
+  );
+  const markerDiff = diffMarkers(projectViews, savedArts);
+  const hasMarkerWarnings = markerDiff.missingArt.length > 0 || markerDiff.missingPhoto.length > 0;
+  const allMarkers = markerDiff.photo;
+
   return (
     <div className="flex flex-col md:flex-row h-screen bg-slate-100 font-sans text-slate-800">
 
@@ -176,9 +263,28 @@ export default function App() {
             <div className="bg-slate-800 p-2 rounded-lg text-white">
               <MapPin size={24} />
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="text-xl font-bold text-slate-900 leading-tight">Caderno de Produção</h1>
               <p className="text-xs text-slate-500">Mapeamento e Gabaritos A4</p>
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={handleExportProject}
+                title="Exportar projeto (.json)"
+                aria-label="Exportar projeto"
+                className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              >
+                <FileDown size={18} />
+              </button>
+              <input type="file" accept="application/json" ref={projectInputRef} onChange={handleImportProject} className="hidden" />
+              <button
+                onClick={() => projectInputRef.current.click()}
+                title="Importar projeto (.json)"
+                aria-label="Importar projeto"
+                className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              >
+                <FileUp size={18} />
+              </button>
             </div>
           </div>
 
@@ -290,24 +396,57 @@ export default function App() {
                   <Layers size={16} /> Lista de Peças ({savedArts.length})
                 </h3>
                 {savedArts.length > 0 && (
-                  <div className="space-y-2 mb-3 max-h-32 overflow-y-auto pr-1">
-                    {savedArts.map((art, i) => (
-                      <div key={art.id} className="flex justify-between items-center text-xs bg-white p-2 border border-blue-200 rounded shadow-sm text-slate-700">
-                        <span className="font-bold truncate max-w-[200px]">
-                          {art.markerRef && <span className="text-orange-600 mr-1">[{art.markerRef}]</span>}
-                          {art.itemName || `Arte ${i + 1}`}
-                        </span>
-                        <button aria-label="Remover arte da lista" onClick={() => handleRemoveFromQueue(art.id)} className="text-slate-400 hover:text-red-500">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div className="space-y-2 mb-3 max-h-40 overflow-y-auto pr-1">
+                      {savedArts.map((art, i) => (
+                        <div key={art.id} className="flex justify-between items-center gap-1 text-xs bg-white p-2 border border-blue-200 rounded shadow-sm text-slate-700">
+                          <span className="font-bold truncate flex-1 min-w-0">
+                            {art.markerRef && <span className="text-orange-600 mr-1">[{art.markerRef}]</span>}
+                            {art.itemName || `Arte ${i + 1}`}
+                          </span>
+                          <div className="flex items-center shrink-0">
+                            <button aria-label="Editar arte" title="Editar" onClick={() => handleEditArt(art)} className="text-slate-400 hover:text-blue-600 p-1">
+                              <Pencil size={14} />
+                            </button>
+                            <button aria-label="Duplicar arte" title="Duplicar" onClick={() => handleDuplicateArt(art)} className="text-slate-400 hover:text-blue-600 p-1">
+                              <Copy size={14} />
+                            </button>
+                            <button aria-label="Remover arte da lista" title="Remover" onClick={() => handleRemoveFromQueue(art.id)} className="text-slate-400 hover:text-red-500 p-1">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] font-bold text-blue-800 bg-blue-100 rounded px-2 py-1.5 mb-3">
+                      <span>{savedArts.length} peça(s)</span>
+                      <span>Área total: {totalAreaM2.toFixed(2)} m²</span>
+                    </div>
+                  </>
                 )}
                 <button onClick={handleSaveToQueue} className="w-full text-xs bg-blue-600 text-white py-2.5 rounded font-bold hover:bg-blue-700 transition shadow-md flex items-center justify-center gap-2">
                   <Plus size={16} /> SALVAR ARTE ATUAL NA LISTA
                 </button>
               </div>
+
+              {/* Consistência marcador ↔ gabarito */}
+              {(markerDiff.photo.length > 0 || markerDiff.art.length > 0) && (
+                <div className={`p-3 rounded-lg border text-xs shadow-sm ${hasMarkerWarnings ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
+                  {hasMarkerWarnings ? (
+                    <div className="space-y-1.5">
+                      <p className="flex items-center gap-1.5 font-bold text-amber-800"><AlertTriangle size={14} /> Verifique os marcadores</p>
+                      {markerDiff.missingArt.length > 0 && (
+                        <p className="text-amber-700">Na foto sem gabarito: <strong>{markerDiff.missingArt.join(', ')}</strong></p>
+                      )}
+                      {markerDiff.missingPhoto.length > 0 && (
+                        <p className="text-amber-700">Gabarito sem marcador na foto: <strong>{markerDiff.missingPhoto.join(', ')}</strong></p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="flex items-center gap-1.5 font-bold text-green-700"><CheckCircle2 size={14} /> Marcadores e gabaritos batem.</p>
+                  )}
+                </div>
+              )}
 
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-4">
                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Identificação</h2>
@@ -322,6 +461,33 @@ export default function App() {
                     className="w-full px-3 py-2 border-2 border-orange-300 rounded focus:ring-2 focus:ring-orange-600 outline-none text-sm font-bold uppercase text-orange-800 placeholder:text-orange-300"
                   />
                   <p className="text-[10px] text-orange-600 mt-1">Separe por vírgula para agrupar (ex: A, B, C)</p>
+                  {allMarkers.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      <span className="text-[10px] text-slate-400 self-center mr-1">Da foto:</span>
+                      {allMarkers.map((label) => {
+                        const selected = markerRef
+                          .split(',')
+                          .map((s) => s.trim().toUpperCase())
+                          .includes(label);
+                        return (
+                          <button
+                            key={label}
+                            onClick={() => {
+                              const current = markerRef.split(',').map((s) => s.trim()).filter(Boolean);
+                              if (selected) {
+                                setMarkerRef(current.filter((s) => s.toUpperCase() !== label).join(', '));
+                              } else {
+                                setMarkerRef([...current, label].join(', '));
+                              }
+                            }}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${selected ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-orange-700 border-orange-300 hover:bg-orange-100'}`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">

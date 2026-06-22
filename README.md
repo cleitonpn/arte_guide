@@ -8,10 +8,10 @@ interferência/corte), exportando tudo em um único **PDF A4**.
 
 ```bash
 npm install
-npm run dev
+npm run dev      # sobe em http://localhost:5173
+npm run lint     # ESLint
+npm test         # testes (Vitest)
 ```
-
-O Vite sobe em `http://localhost:5173`.
 
 Para gerar a versão de produção:
 
@@ -34,21 +34,39 @@ Depois disso o app fica disponível em:
 > O caminho `/arte_guide/` está fixado em `vite.config.js` (`base`). Se o nome do
 > repositório mudar, ajuste o `base` para combinar.
 
+## Funcionalidades
+
+- **Mapa de instalação**: várias vistas 3D, marcadores clicáveis (A, B … Z, AA…).
+- **Gabaritos A4**: medidas, sangria e áreas de interferência (retângulo/chanfro)
+  com posicionamento exato por coordenadas.
+- **Lista de peças**: salvar, **editar**, **duplicar** e remover.
+- **Resumo de produção**: contagem de peças e área total em m².
+- **Consistência marcador ↔ gabarito**: avisa marcadores na foto sem gabarito
+  (e o inverso) e sugere chips de marcadores ao preencher a peça.
+- **Exportar/Importar projeto** em `.json` (leva fotos e peças juntas).
+- **Persistência automática** — formulário no `localStorage`, imagens no
+  `IndexedDB` (não estoura a cota do navegador).
+- **PDF** combinando capas + gabaritos, com indicador de progresso.
+
 ## Estrutura
 
 ```
 src/
   components/
-    ProjectCover.jsx   # capa / referência visual com marcadores
-    ArtPreview.jsx     # gabarito técnico A4 (SVG com sangria e cortes)
+    ProjectCover.jsx     # capa / referência visual com marcadores
+    ArtPreview.jsx       # gabarito técnico A4 (SVG com sangria e cortes)
   hooks/
-    useLocalStorage.js # persistência automática do estado
+    useLocalStorage.js   # persistência do formulário
+    useIndexedDbState.js # persistência das imagens (IndexedDB)
   utils/
-    units.js           # conversões m/cm/mm e formatação
-    labels.js          # rótulos A, B … Z, AA, AB
-    pdf.js             # geração do PDF (html2canvas + jsPDF)
-  constants.js         # cores, dimensões e parâmetros geométricos
-  App.jsx              # orquestração e UI
+    units.js             # conversões m/cm/mm, formatação e área (m²)
+    labels.js            # rótulos A, B … Z, AA, AB
+    markers.js           # consistência marcador ↔ gabarito
+    idb.js               # wrapper key-value sobre IndexedDB
+    pdf.js               # geração do PDF (html2canvas + jsPDF, sob demanda)
+    *.test.js            # testes (Vitest)
+  constants.js           # cores, dimensões e parâmetros geométricos
+  App.jsx                # orquestração e UI
 ```
 
 ## Tecnologias

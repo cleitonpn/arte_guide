@@ -1,10 +1,10 @@
-import { jsPDF } from 'jspdf';
 import { isLandscape } from './units';
 import { PDF_SCALE } from '../constants';
 
-// html2canvas é pesado; carregamos sob demanda só quando o usuário gera o PDF.
-const loadHtml2Canvas = () =>
-  import('html2canvas').then((m) => m.default);
+// jsPDF e html2canvas são pesados; carregamos sob demanda só quando o
+// usuário realmente gera o PDF (mantém o bundle inicial enxuto).
+const loadHtml2Canvas = () => import('html2canvas').then((m) => m.default);
+const loadJsPdf = () => import('jspdf').then((m) => m.jsPDF);
 
 /**
  * Gera o PDF combinando as capas (referência visual) e os gabaritos técnicos.
@@ -17,7 +17,7 @@ const loadHtml2Canvas = () =>
  * @param {(done:number,total:number)=>void} [params.onProgress]
  */
 export async function generatePdf({ coverEls, artItems, artEls, fileName, onProgress }) {
-  const html2canvas = await loadHtml2Canvas();
+  const [html2canvas, jsPDF] = await Promise.all([loadHtml2Canvas(), loadJsPdf()]);
   const pdf = new jsPDF('l', 'mm', 'a4');
 
   let pageAdded = false;

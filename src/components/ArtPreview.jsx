@@ -17,8 +17,6 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
     markerRef,
   } = art;
 
-  const inputW = parseNum(widthStr);
-  const inputH = parseNum(heightStr);
   const inputBleed = parseNum(bleedStr);
 
   const w_cm = toCm(widthStr, unit);

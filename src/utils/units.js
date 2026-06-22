@@ -23,3 +23,7 @@ export const isLandscape = (widthStr, heightStr) =>
 // Formata uma medida para exibição (2 casas em metros, 1 em centímetros).
 export const formatDim = (value, unit) =>
   parseNum(value).toFixed(unit === 'm' ? 2 : 1);
+
+// Área da peça em metros quadrados (a partir de largura/altura na unidade dada).
+export const areaM2 = (widthStr, heightStr, unit) =>
+  (toCm(widthStr, unit) * toCm(heightStr, unit)) / 10000;
