@@ -27,3 +27,7 @@ export const formatDim = (value, unit) =>
 // Área da peça em metros quadrados (a partir de largura/altura na unidade dada).
 export const areaM2 = (widthStr, heightStr, unit) =>
   (toCm(widthStr, unit) * toCm(heightStr, unit)) / 10000;
+
+// Rótulo de medida no estilo da gráfica: "2,00x1,00m".
+export const measureLabel = (widthStr, heightStr, unit) =>
+  `${formatDim(widthStr, unit)}x${formatDim(heightStr, unit)}${unit}`.replace(/\./g, ',');

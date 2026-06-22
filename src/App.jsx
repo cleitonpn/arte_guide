@@ -3,18 +3,24 @@ import {
   Download, FileImage, FileType, User, Tag, Plus, Trash2,
   Layers, Scissors, MapPin, Upload, Image as ImageIcon, X,
   Copy, Pencil, FileDown, FileUp, AlertTriangle, CheckCircle2,
+  ClipboardCheck, ImagePlus,
 } from 'lucide-react';
 
 import ProjectCover from './components/ProjectCover';
 import ArtPreview from './components/ArtPreview';
+import ApprovalPrint from './components/ApprovalPrint';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useIndexedDbState } from './hooks/useIndexedDbState';
+import { useFitScale } from './hooks/useFitScale';
 import { indexToLabel } from './utils/labels';
-import { areaM2 } from './utils/units';
+import { areaM2, measureLabel } from './utils/units';
 import { diffMarkers } from './utils/markers';
+import { fileToCardImage } from './utils/artImage';
 import { generatePdf } from './utils/pdf';
+import { COVER_WIDTH, COVER_HEIGHT } from './constants';
 
 const PROJECT_FILE_VERSION = 1;
+const DEFAULT_FOOTER_COLS = 'IMPRESSÃO, LASER, ACABAMENTO, CONFERÊNCIA';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('projeto');
@@ -37,6 +43,18 @@ export default function App() {
   const [zones, setZones] = useLocalStorage('ag.zones', []);
 
   const [savedArts, setSavedArts] = useLocalStorage('ag.savedArts', []);
+
+  // Print de aprovação (artes finais por marcador).
+  const [printProjectTitle, setPrintProjectTitle] = useLocalStorage('ag.printProjectTitle', '');
+  const [printVenue, setPrintVenue] = useLocalStorage('ag.printVenue', '');
+  const [printStandType, setPrintStandType] = useLocalStorage('ag.printStandType', '');
+  const [printSection, setPrintSection] = useLocalStorage('ag.printSection', 'MATERIAIS COMUNICAÇÃO VISUAL');
+  const [printStatus, setPrintStatus] = useLocalStorage('ag.printStatus', 'APROVADO');
+  const [printFooter, setPrintFooter] = useLocalStorage('ag.printFooter', DEFAULT_FOOTER_COLS);
+  const [printLogo, setPrintLogo] = useIndexedDbState('ag.printLogo', null);
+  const [printArts, setPrintArts] = useIndexedDbState('ag.printArts', {}); // { [pieceId]: dataURL }
+  const [printExtras, setPrintExtras] = useIndexedDbState('ag.printExtras', []);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(null); // { done, total }
   const [toast, setToast] = useState(null); // { type, message }
@@ -47,6 +65,10 @@ export default function App() {
   const artRefs = useRef(new Map());
   const imageInputRef = useRef(null);
   const projectInputRef = useRef(null);
+  const logoInputRef = useRef(null);
+  const approvalRef = useRef(null);
+  const printPreviewWrapRef = useRef(null);
+  const printScale = useFitScale(printPreviewWrapRef, COVER_WIDTH, COVER_HEIGHT);
 
   const currentArt = {
     id: 'current', clientName, itemName, markerRef, title,
@@ -193,6 +215,67 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // --- Print de aprovação ---
+  const handleUploadArt = async (pieceId, file) => {
+    if (!file) return;
+    try {
+      const image = await fileToCardImage(file);
+      setPrintArts((prev) => ({ ...prev, [pieceId]: image }));
+    } catch (err) {
+      console.error('Falha ao carregar arte', err);
+      showToast('error', err.message || 'Não foi possível carregar a arte.');
+    }
+  };
+
+  const handleRemoveArt = (pieceId) => {
+    setPrintArts((prev) => {
+      const next = { ...prev };
+      delete next[pieceId];
+      return next;
+    });
+  };
+
+  const handleUploadLogo = async (file) => {
+    if (!file) return;
+    try {
+      setPrintLogo(await fileToCardImage(file));
+    } catch (err) {
+      console.error('Falha ao carregar logo', err);
+      showToast('error', 'Não foi possível carregar o logo.');
+    }
+  };
+
+  const addExtraCard = () => {
+    setPrintExtras((prev) => [...prev, { id: Date.now(), marker: '', title: '', image: null }]);
+  };
+
+  const addViewAsExtra = (view) => {
+    if (!view) return;
+    setPrintExtras((prev) => [
+      ...prev,
+      { id: Date.now(), marker: '', title: 'ESTANDE 3D', image: view.image },
+    ]);
+  };
+
+  const updateExtra = (id, field, value) => {
+    setPrintExtras((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const uploadExtraImage = async (id, file) => {
+    if (!file) return;
+    try {
+      const image = await fileToCardImage(file);
+      updateExtra(id, 'image', image);
+    } catch (err) {
+      console.error('Falha ao carregar arte do card', err);
+      showToast('error', err.message || 'Não foi possível carregar a arte.');
+    }
+  };
+
+  const removeExtra = (id) => {
+    setPrintExtras((prev) => prev.filter((e) => e.id !== id));
+  };
+
   const addZone = () => {
     setZones((prev) => [...prev, {
       id: Date.now(), label: 'Corte/Furo', type: 'rect',
@@ -214,6 +297,7 @@ export default function App() {
     setProgress(null);
     try {
       const coverEls = projectViews.map((v) => coverRefs.current.get(v.id));
+      const approvalEls = hasApproval && approvalRef.current ? [approvalRef.current] : [];
       const artItems = savedArts.length > 0 ? savedArts : [currentArt];
       const artEls = savedArts.length > 0
         ? savedArts.map((a) => artRefs.current.get(a.id))
@@ -225,6 +309,7 @@ export default function App() {
 
       await generatePdf({
         coverEls,
+        approvalEls,
         artItems,
         artEls,
         fileName,
@@ -241,7 +326,35 @@ export default function App() {
   };
 
   const activeView = projectViews.find((v) => v.id === activeViewId);
-  const totalPages = projectViews.length + (savedArts.length > 0 ? savedArts.length : 1);
+
+  // Cards do print: peças salvas (com a arte enviada) + cards avulsos.
+  const printConfig = {
+    logo: printLogo,
+    projectTitle: printProjectTitle || clientName,
+    venue: printVenue,
+    standType: printStandType,
+    section: printSection,
+    status: printStatus,
+    footerCols: printFooter.split(',').map((s) => s.trim()).filter(Boolean),
+  };
+  const printCards = [
+    ...savedArts.map((p) => ({
+      id: `art-${p.id}`,
+      marker: (p.markerRef || '').toUpperCase(),
+      title: `${p.title} ${measureLabel(p.widthStr, p.heightStr, p.unit)}`.trim(),
+      image: printArts[p.id] || null,
+    })),
+    ...printExtras.map((e) => ({
+      id: `extra-${e.id}`,
+      marker: (e.marker || '').toUpperCase(),
+      title: e.title || '',
+      image: e.image || null,
+    })),
+  ];
+  const hasApproval = printCards.length > 0;
+
+  const totalPages =
+    projectViews.length + (hasApproval ? 1 : 0) + (savedArts.length > 0 ? savedArts.length : 1);
 
   // Resumo de produção (peças salvas) e consistência marcador ↔ gabarito.
   const totalAreaM2 = savedArts.reduce(
@@ -293,17 +406,25 @@ export default function App() {
               role="tab"
               aria-selected={activeTab === 'projeto'}
               onClick={() => setActiveTab('projeto')}
-              className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'projeto' ? 'border-orange-600 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`flex-1 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'projeto' ? 'border-orange-600 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
-              1. Projeto Visual
+              1. Projeto
             </button>
             <button
               role="tab"
               aria-selected={activeTab === 'gabaritos'}
               onClick={() => setActiveTab('gabaritos')}
-              className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'gabaritos' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`flex-1 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'gabaritos' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
-              2. Criar Gabaritos
+              2. Gabaritos
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === 'print'}
+              onClick={() => setActiveTab('print')}
+              className={`flex-1 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'print' ? 'border-green-600 text-green-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              3. Print
             </button>
           </div>
         </div>
@@ -619,6 +740,112 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* ABA 3: PRINT DE APROVAÇÃO */}
+          {activeTab === 'print' && (
+            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
+              <div className="bg-green-50 border border-green-200 p-4 rounded-lg shadow-sm space-y-3">
+                <h3 className="text-xs font-bold text-green-800 uppercase flex items-center gap-2"><ClipboardCheck size={16} /> Cabeçalho do Print</h3>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Título do projeto</label>
+                  <input type="text" value={printProjectTitle} onChange={(e) => setPrintProjectTitle(e.target.value)} placeholder={clientName || 'EX: ECHODATA | FÓRUM ECBR 2026'} className="w-full px-2 py-1.5 border border-slate-300 rounded outline-none text-xs uppercase" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Local / Pavilhão</label>
+                    <input type="text" value={printVenue} onChange={(e) => setPrintVenue(e.target.value)} placeholder="EX: ANHEMBI" className="w-full px-2 py-1.5 border border-slate-300 rounded outline-none text-xs uppercase" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tipo de estande</label>
+                    <input type="text" value={printStandType} onChange={(e) => setPrintStandType(e.target.value)} placeholder="EX: BÁSICO 9m" className="w-full px-2 py-1.5 border border-slate-300 rounded outline-none text-xs uppercase" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Seção</label>
+                  <input type="text" value={printSection} onChange={(e) => setPrintSection(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded outline-none text-xs uppercase" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status</label>
+                    <select value={printStatus} onChange={(e) => setPrintStatus(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded outline-none text-xs bg-white">
+                      <option>APROVADO</option>
+                      <option>EM APROVAÇÃO</option>
+                      <option>PENDENTE</option>
+                      <option>REPROVADO</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Logo</label>
+                    <input type="file" accept="image/*" ref={logoInputRef} onChange={(e) => { handleUploadLogo(e.target.files[0]); e.target.value = ''; }} className="hidden" />
+                    <div className="flex gap-1">
+                      <button onClick={() => logoInputRef.current.click()} className="flex-1 px-2 py-1.5 text-xs font-bold bg-slate-200 hover:bg-slate-300 rounded">
+                        {printLogo ? 'Trocar' : 'Subir'}
+                      </button>
+                      {printLogo && (
+                        <button onClick={() => setPrintLogo(null)} aria-label="Remover logo" className="px-2 py-1.5 text-slate-400 hover:text-red-500 bg-slate-100 rounded"><Trash2 size={14} /></button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Colunas do rodapé (separe por vírgula)</label>
+                  <input type="text" value={printFooter} onChange={(e) => setPrintFooter(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded outline-none text-xs uppercase" />
+                </div>
+              </div>
+
+              {/* Artes finais por peça */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2"><ImagePlus size={14} /> Artes por Peça ({savedArts.length})</h3>
+                {savedArts.length === 0 && (
+                  <p className="text-xs text-slate-500 italic bg-white p-3 rounded border border-slate-200">Crie peças na aba <strong>2. Gabaritos</strong> para listar aqui.</p>
+                )}
+                {savedArts.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-2">
+                    <span className="w-6 h-6 shrink-0 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-black">{(p.markerRef || '?').toUpperCase().slice(0, 2)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-700 truncate uppercase">{p.title}</p>
+                      <p className="text-[10px] text-slate-400">{measureLabel(p.widthStr, p.heightStr, p.unit)}</p>
+                    </div>
+                    {printArts[p.id] && <img src={printArts[p.id]} alt="" className="w-10 h-10 object-cover rounded border border-slate-200" />}
+                    <label className="cursor-pointer px-2 py-1.5 text-[11px] font-bold bg-green-100 text-green-700 hover:bg-green-200 rounded">
+                      <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { handleUploadArt(p.id, e.target.files[0]); e.target.value = ''; }} />
+                      {printArts[p.id] ? 'Trocar' : 'Subir'}
+                    </label>
+                    {printArts[p.id] && (
+                      <button onClick={() => handleRemoveArt(p.id)} aria-label="Remover arte" className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Cards avulsos */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cards Avulsos</h3>
+                {printExtras.map((e) => (
+                  <div key={e.id} className="bg-white border border-slate-200 rounded p-2 space-y-2">
+                    <div className="flex gap-2">
+                      <input type="text" value={e.marker} onChange={(ev) => updateExtra(e.id, 'marker', ev.target.value)} placeholder="Marc." className="w-16 px-2 py-1 border border-slate-200 rounded text-xs font-bold uppercase outline-none" />
+                      <input type="text" value={e.title} onChange={(ev) => updateExtra(e.id, 'title', ev.target.value)} placeholder="Título do card" className="flex-1 px-2 py-1 border border-slate-200 rounded text-xs uppercase outline-none" />
+                      <button onClick={() => removeExtra(e.id)} aria-label="Remover card" className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {e.image && <img src={e.image} alt="" className="w-10 h-10 object-cover rounded border border-slate-200" />}
+                      <label className="cursor-pointer px-2 py-1.5 text-[11px] font-bold bg-slate-200 hover:bg-slate-300 rounded">
+                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(ev) => { uploadExtraImage(e.id, ev.target.files[0]); ev.target.value = ''; }} />
+                        {e.image ? 'Trocar arte' : 'Subir arte'}
+                      </label>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <button onClick={addExtraCard} className="flex-1 py-2 flex items-center justify-center gap-1 text-xs font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded"><Plus size={14} /> Card avulso</button>
+                  {projectViews.length > 0 && (
+                    <button onClick={() => addViewAsExtra(activeView || projectViews[0])} className="flex-1 py-2 flex items-center justify-center gap-1 text-xs font-bold text-orange-600 bg-orange-100 hover:bg-orange-200 rounded"><ImageIcon size={14} /> Foto 3D</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Rodapé do menu (botão de PDF) */}
@@ -683,7 +910,7 @@ export default function App() {
               </div>
             )}
           </div>
-        ) : (
+        ) : activeTab === 'gabaritos' ? (
           <>
             <div className="absolute top-4 left-6 flex items-center gap-2 text-slate-500 font-bold tracking-wide text-sm">
               <FileImage size={18} /> PRÉ-VISUALIZAÇÃO DE CORTES E SANGRIA
@@ -695,6 +922,20 @@ export default function App() {
             </div>
             <ArtPreview ref={previewRef} art={currentArt} />
           </>
+        ) : (
+          <div className="w-full h-full flex flex-col">
+            <div className="flex items-center gap-2 text-slate-500 font-bold tracking-wide text-sm mb-2 shrink-0">
+              <ClipboardCheck size={18} /> PRINT DE APROVAÇÃO ({printCards.length} card{printCards.length === 1 ? '' : 's'})
+            </div>
+            <div ref={printPreviewWrapRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+              <div
+                className="shadow-2xl shrink-0"
+                style={{ width: COVER_WIDTH, height: COVER_HEIGHT, transform: `scale(${printScale})`, transformOrigin: 'center' }}
+              >
+                <ApprovalPrint config={printConfig} cards={printCards} />
+              </div>
+            </div>
+          </div>
         )}
       </div>
       {/* --- FIM DA ÁREA CENTRAL --- */}
@@ -726,6 +967,11 @@ export default function App() {
             />
           </div>
         ))}
+        {hasApproval && (
+          <div style={{ marginBottom: '100px' }}>
+            <ApprovalPrint ref={approvalRef} config={printConfig} cards={printCards} />
+          </div>
+        )}
         {savedArts.map((art) => (
           <div key={art.id} style={{ marginBottom: '100px' }}>
             <ArtPreview

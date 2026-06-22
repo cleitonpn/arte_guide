@@ -10,26 +10,34 @@ const loadJsPdf = () => import('jspdf').then((m) => m.jsPDF);
  * Gera o PDF combinando as capas (referência visual) e os gabaritos técnicos.
  *
  * @param {object}   params
- * @param {HTMLElement[]} params.coverEls  Elementos das capas, na ordem desejada.
- * @param {object[]}      params.artItems  Dados das artes (para decidir orientação).
- * @param {HTMLElement[]} params.artEls    Elementos dos gabaritos, alinhados a artItems.
- * @param {string}        params.fileName  Nome do arquivo final.
+ * @param {HTMLElement[]} params.coverEls     Elementos das capas, na ordem desejada.
+ * @param {HTMLElement[]} params.approvalEls  Páginas "print de aprovação" (paisagem).
+ * @param {object[]}      params.artItems     Dados das artes (para decidir orientação).
+ * @param {HTMLElement[]} params.artEls       Elementos dos gabaritos, alinhados a artItems.
+ * @param {string}        params.fileName     Nome do arquivo final.
  * @param {(done:number,total:number)=>void} [params.onProgress]
  */
-export async function generatePdf({ coverEls, artItems, artEls, fileName, onProgress }) {
+export async function generatePdf({
+  coverEls,
+  approvalEls = [],
+  artItems,
+  artEls,
+  fileName,
+  onProgress,
+}) {
   const [html2canvas, jsPDF] = await Promise.all([loadHtml2Canvas(), loadJsPdf()]);
   const pdf = new jsPDF('l', 'mm', 'a4');
 
   let pageAdded = false;
-  const total = coverEls.length + artEls.length;
+  const total = coverEls.length + approvalEls.length + artEls.length;
   let done = 0;
   const tick = () => onProgress?.(++done, total);
 
-  // 1) Capas / vistas (sempre paisagem).
-  for (const el of coverEls) {
+  // Capas e prints de aprovação são páginas paisagem capturadas como imagem.
+  const addLandscapeImage = async (el) => {
     if (!el) {
       tick();
-      continue;
+      return;
     }
     if (pageAdded) pdf.addPage('a4', 'l');
     const canvas = await html2canvas(el, { scale: PDF_SCALE.cover, useCORS: true });
@@ -37,9 +45,19 @@ export async function generatePdf({ coverEls, artItems, artEls, fileName, onProg
     pdf.addImage(imgData, 'JPEG', 0, 0, pageW(pdf), pageH(pdf));
     pageAdded = true;
     tick();
+  };
+
+  // 1) Capas / vistas (mapa de instalação).
+  for (const el of coverEls) {
+    await addLandscapeImage(el);
   }
 
-  // 2) Gabaritos técnicos (orientação conforme a peça).
+  // 2) Prints de aprovação (artes finais por marcador).
+  for (const el of approvalEls) {
+    await addLandscapeImage(el);
+  }
+
+  // 3) Gabaritos técnicos (orientação conforme a peça).
   for (let i = 0; i < artEls.length; i++) {
     const el = artEls[i];
     if (!el) {

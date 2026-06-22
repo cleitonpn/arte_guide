@@ -39,6 +39,10 @@ Depois disso o app fica disponível em:
 - **Mapa de instalação**: várias vistas 3D, marcadores clicáveis (A, B … Z, AA…).
 - **Gabaritos A4**: medidas, sangria e áreas de interferência (retângulo/chanfro)
   com posicionamento exato por coordenadas.
+- **Print de aprovação**: monta a página de aprovação/instalação (cabeçalho com
+  projeto, local, tipo de estande e status; grade de cards com a arte final por
+  marcador; rodapé de produção). As artes finais entram como **imagem ou PDF**
+  (a 1ª página do PDF é renderizada automaticamente).
 - **Lista de peças**: salvar, **editar**, **duplicar** e remover.
 - **Resumo de produção**: contagem de peças e área total em m².
 - **Consistência marcador ↔ gabarito**: avisa marcadores na foto sem gabarito
@@ -55,13 +59,16 @@ src/
   components/
     ProjectCover.jsx     # capa / referência visual com marcadores
     ArtPreview.jsx       # gabarito técnico A4 (SVG com sangria e cortes)
+    ApprovalPrint.jsx    # print de aprovação (grade de cards das artes finais)
   hooks/
     useLocalStorage.js   # persistência do formulário
     useIndexedDbState.js # persistência das imagens (IndexedDB)
+    useFitScale.js       # escala de preview para caber no container
   utils/
-    units.js             # conversões m/cm/mm, formatação e área (m²)
+    units.js             # conversões m/cm/mm, formatação, área (m²) e medida
     labels.js            # rótulos A, B … Z, AA, AB
     markers.js           # consistência marcador ↔ gabarito
+    artImage.js          # arte final → imagem (imagem ou 1ª página de PDF)
     idb.js               # wrapper key-value sobre IndexedDB
     pdf.js               # geração do PDF (html2canvas + jsPDF, sob demanda)
     *.test.js            # testes (Vitest)
