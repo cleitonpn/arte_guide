@@ -16,6 +16,7 @@ import { indexToLabel } from './utils/labels';
 import { areaM2, measureLabel } from './utils/units';
 import { diffMarkers, collectPhotoMarkers } from './utils/markers';
 import { fileToCardImage } from './utils/artImage';
+import { renderViewWithMarkers } from './utils/viewImage';
 import { generatePdf } from './utils/pdf';
 import { COVER_WIDTH, COVER_HEIGHT } from './constants';
 
@@ -277,6 +278,21 @@ export default function App() {
       })),
     ]);
     showToast('success', `${savedArts.length} card(s) importado(s) das peças.`);
+  };
+
+  // Foto 3D com os marcadores (A, B, C...) desenhados sobre a imagem.
+  const addViewCard = async (view) => {
+    if (!view) {
+      showToast('error', 'Adicione uma vista na aba 1. Projeto.');
+      return;
+    }
+    try {
+      const image = await renderViewWithMarkers(view);
+      addPrintCard({ title: 'ESTANDE 3D', image });
+    } catch (err) {
+      console.error('Falha ao compor a foto 3D', err);
+      addPrintCard({ title: 'ESTANDE 3D', image: view.image });
+    }
   };
 
   const importCardsFromMarkers = () => {
@@ -808,7 +824,7 @@ export default function App() {
                   <button onClick={importCardsFromPieces} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded"><Layers size={13} /> Das peças ({savedArts.length})</button>
                   <button onClick={importCardsFromMarkers} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-orange-700 bg-orange-100 hover:bg-orange-200 rounded"><MapPin size={13} /> Dos marcadores</button>
                   <button onClick={() => addPrintCard()} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded"><Plus size={13} /> Card em branco</button>
-                  <button onClick={() => addPrintCard({ title: 'ESTANDE 3D', image: (activeView || projectViews[0])?.image || null })} disabled={projectViews.length === 0} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"><ImageIcon size={13} /> Foto 3D</button>
+                  <button onClick={() => addViewCard(activeView || projectViews[0])} disabled={projectViews.length === 0} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"><ImageIcon size={13} /> Foto 3D</button>
                 </div>
 
                 {printCards.length === 0 && (
