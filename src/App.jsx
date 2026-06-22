@@ -145,6 +145,11 @@ export default function App() {
     setSavedArts((prev) => prev.filter((art) => art.id !== id));
   };
 
+  // Atualiza um campo de uma peça já salva (usado para editar a letra no print).
+  const updateSavedArt = (id, field, value) => {
+    setSavedArts((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
+  };
+
   // Carrega os campos de uma peça no formulário (usado por editar/duplicar).
   const loadArtIntoForm = (art) => {
     setClientName(art.clientName ?? '');
@@ -801,7 +806,15 @@ export default function App() {
                 )}
                 {savedArts.map((p) => (
                   <div key={p.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-2">
-                    <span className="w-6 h-6 shrink-0 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-black">{(p.markerRef || '?').toUpperCase().slice(0, 2)}</span>
+                    <input
+                      type="text"
+                      value={p.markerRef || ''}
+                      onChange={(ev) => updateSavedArt(p.id, 'markerRef', ev.target.value)}
+                      placeholder="Letra"
+                      aria-label="Letra do marcador"
+                      title="Letra do marcador (vem da peça / tela 1)"
+                      className="w-12 shrink-0 px-1 py-1 text-center border border-slate-200 rounded text-xs font-black uppercase outline-none focus:border-green-500"
+                    />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-slate-700 truncate uppercase">{p.title}</p>
                       <p className="text-[10px] text-slate-400">{measureLabel(p.widthStr, p.heightStr, p.unit)}</p>
@@ -824,7 +837,7 @@ export default function App() {
                 {printExtras.map((e) => (
                   <div key={e.id} className="bg-white border border-slate-200 rounded p-2 space-y-2">
                     <div className="flex gap-2">
-                      <input type="text" value={e.marker} onChange={(ev) => updateExtra(e.id, 'marker', ev.target.value)} placeholder="Marc." className="w-16 px-2 py-1 border border-slate-200 rounded text-xs font-bold uppercase outline-none" />
+                      <input type="text" value={e.marker} onChange={(ev) => updateExtra(e.id, 'marker', ev.target.value)} placeholder="Letra" aria-label="Letra do marcador" title="Opcional: letra do marcador" className="w-16 px-2 py-1 border border-slate-200 rounded text-xs font-bold uppercase outline-none focus:border-slate-400" />
                       <input type="text" value={e.title} onChange={(ev) => updateExtra(e.id, 'title', ev.target.value)} placeholder="Título do card" className="flex-1 px-2 py-1 border border-slate-200 rounded text-xs uppercase outline-none" />
                       <button onClick={() => removeExtra(e.id)} aria-label="Remover card" className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
                     </div>
