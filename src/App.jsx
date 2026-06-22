@@ -14,7 +14,7 @@ import { useIndexedDbState } from './hooks/useIndexedDbState';
 import { useFitScale } from './hooks/useFitScale';
 import { indexToLabel } from './utils/labels';
 import { areaM2, measureLabel } from './utils/units';
-import { diffMarkers } from './utils/markers';
+import { diffMarkers, collectPhotoMarkers } from './utils/markers';
 import { fileToCardImage } from './utils/artImage';
 import { generatePdf } from './utils/pdf';
 import { COVER_WIDTH, COVER_HEIGHT } from './constants';
@@ -52,8 +52,9 @@ export default function App() {
   const [printStatus, setPrintStatus] = useLocalStorage('ag.printStatus', 'APROVADO');
   const [printFooter, setPrintFooter] = useLocalStorage('ag.printFooter', DEFAULT_FOOTER_COLS);
   const [printLogo, setPrintLogo] = useIndexedDbState('ag.printLogo', null);
-  const [printArts, setPrintArts] = useIndexedDbState('ag.printArts', {}); // { [pieceId]: dataURL }
-  const [printExtras, setPrintExtras] = useIndexedDbState('ag.printExtras', []);
+  // Cards do print têm vida própria (não ficam presos às peças do gabarito).
+  // Podem ser criados na mão ou importados das peças / dos marcadores da foto.
+  const [printCards, setPrintCards] = useIndexedDbState('ag.printCards', []);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(null); // { done, total }
@@ -145,11 +146,6 @@ export default function App() {
     setSavedArts((prev) => prev.filter((art) => art.id !== id));
   };
 
-  // Atualiza um campo de uma peça já salva (usado para editar a letra no print).
-  const updateSavedArt = (id, field, value) => {
-    setSavedArts((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
-  };
-
   // Carrega os campos de uma peça no formulário (usado por editar/duplicar).
   const loadArtIntoForm = (art) => {
     setClientName(art.clientName ?? '');
@@ -220,24 +216,40 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  // --- Print de aprovação ---
-  const handleUploadArt = async (pieceId, file) => {
+  // --- Print de aprovação (cards independentes) ---
+  const newCardId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const addPrintCard = (card = {}) => {
+    setPrintCards((prev) => [...prev, { id: newCardId(), marker: '', title: '', image: null, ...card }]);
+  };
+
+  const updatePrintCard = (id, field, value) => {
+    setPrintCards((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  };
+
+  const removePrintCard = (id) => {
+    setPrintCards((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const movePrintCard = (id, dir) => {
+    setPrintCards((prev) => {
+      const i = prev.findIndex((c) => c.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const uploadPrintCardImage = async (id, file) => {
     if (!file) return;
     try {
-      const image = await fileToCardImage(file);
-      setPrintArts((prev) => ({ ...prev, [pieceId]: image }));
+      updatePrintCard(id, 'image', await fileToCardImage(file));
     } catch (err) {
       console.error('Falha ao carregar arte', err);
       showToast('error', err.message || 'Não foi possível carregar a arte.');
     }
-  };
-
-  const handleRemoveArt = (pieceId) => {
-    setPrintArts((prev) => {
-      const next = { ...prev };
-      delete next[pieceId];
-      return next;
-    });
   };
 
   const handleUploadLogo = async (file) => {
@@ -250,35 +262,34 @@ export default function App() {
     }
   };
 
-  const addExtraCard = () => {
-    setPrintExtras((prev) => [...prev, { id: Date.now(), marker: '', title: '', image: null }]);
-  };
-
-  const addViewAsExtra = (view) => {
-    if (!view) return;
-    setPrintExtras((prev) => [
-      ...prev,
-      { id: Date.now(), marker: '', title: 'ESTANDE 3D', image: view.image },
-    ]);
-  };
-
-  const updateExtra = (id, field, value) => {
-    setPrintExtras((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
-  };
-
-  const uploadExtraImage = async (id, file) => {
-    if (!file) return;
-    try {
-      const image = await fileToCardImage(file);
-      updateExtra(id, 'image', image);
-    } catch (err) {
-      console.error('Falha ao carregar arte do card', err);
-      showToast('error', err.message || 'Não foi possível carregar a arte.');
+  const importCardsFromPieces = () => {
+    if (savedArts.length === 0) {
+      showToast('error', 'Nenhuma peça no gabarito para importar.');
+      return;
     }
+    setPrintCards((prev) => [
+      ...prev,
+      ...savedArts.map((p) => ({
+        id: newCardId(),
+        marker: (p.markerRef || '').toUpperCase(),
+        title: `${p.title} ${measureLabel(p.widthStr, p.heightStr, p.unit)}`.trim(),
+        image: null,
+      })),
+    ]);
+    showToast('success', `${savedArts.length} card(s) importado(s) das peças.`);
   };
 
-  const removeExtra = (id) => {
-    setPrintExtras((prev) => prev.filter((e) => e.id !== id));
+  const importCardsFromMarkers = () => {
+    const markers = collectPhotoMarkers(projectViews);
+    if (markers.length === 0) {
+      showToast('error', 'Nenhum marcador na foto para importar.');
+      return;
+    }
+    setPrintCards((prev) => [
+      ...prev,
+      ...markers.map((m) => ({ id: newCardId(), marker: m, title: '', image: null })),
+    ]);
+    showToast('success', `${markers.length} card(s) criado(s) dos marcadores.`);
   };
 
   const addZone = () => {
@@ -332,7 +343,6 @@ export default function App() {
 
   const activeView = projectViews.find((v) => v.id === activeViewId);
 
-  // Cards do print: peças salvas (com a arte enviada) + cards avulsos.
   const printConfig = {
     logo: printLogo,
     projectTitle: printProjectTitle || clientName,
@@ -342,20 +352,8 @@ export default function App() {
     status: printStatus,
     footerCols: printFooter.split(',').map((s) => s.trim()).filter(Boolean),
   };
-  const printCards = [
-    ...savedArts.map((p) => ({
-      id: `art-${p.id}`,
-      marker: (p.markerRef || '').toUpperCase(),
-      title: `${p.title} ${measureLabel(p.widthStr, p.heightStr, p.unit)}`.trim(),
-      image: printArts[p.id] || null,
-    })),
-    ...printExtras.map((e) => ({
-      id: `extra-${e.id}`,
-      marker: (e.marker || '').toUpperCase(),
-      title: e.title || '',
-      image: e.image || null,
-    })),
-  ];
+  // Para o desenho, normaliza o marcador em maiúsculo.
+  const printCardsForRender = printCards.map((c) => ({ ...c, marker: (c.marker || '').toUpperCase() }));
   const hasApproval = printCards.length > 0;
 
   const totalPages =
@@ -798,64 +796,48 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Artes finais por peça */}
+              {/* Cards do print (independentes) */}
               <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2"><ImagePlus size={14} /> Artes por Peça ({savedArts.length})</h3>
-                {savedArts.length === 0 && (
-                  <p className="text-xs text-slate-500 italic bg-white p-3 rounded border border-slate-200">Crie peças na aba <strong>2. Gabaritos</strong> para listar aqui.</p>
-                )}
-                {savedArts.map((p) => (
-                  <div key={p.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-2">
-                    <input
-                      type="text"
-                      value={p.markerRef || ''}
-                      onChange={(ev) => updateSavedArt(p.id, 'markerRef', ev.target.value)}
-                      placeholder="Letra"
-                      aria-label="Letra do marcador"
-                      title="Letra do marcador (vem da peça / tela 1)"
-                      className="w-12 shrink-0 px-1 py-1 text-center border border-slate-200 rounded text-xs font-black uppercase outline-none focus:border-green-500"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-700 truncate uppercase">{p.title}</p>
-                      <p className="text-[10px] text-slate-400">{measureLabel(p.widthStr, p.heightStr, p.unit)}</p>
-                    </div>
-                    {printArts[p.id] && <img src={printArts[p.id]} alt="" className="w-10 h-10 object-cover rounded border border-slate-200" />}
-                    <label className="cursor-pointer px-2 py-1.5 text-[11px] font-bold bg-green-100 text-green-700 hover:bg-green-200 rounded">
-                      <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { handleUploadArt(p.id, e.target.files[0]); e.target.value = ''; }} />
-                      {printArts[p.id] ? 'Trocar' : 'Subir'}
-                    </label>
-                    {printArts[p.id] && (
-                      <button onClick={() => handleRemoveArt(p.id)} aria-label="Remover arte" className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
-                    )}
-                  </div>
-                ))}
-              </div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2"><ImagePlus size={14} /> Cards do Print ({printCards.length})</h3>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  Monte os cards do jeito que quiser. Eles não dependem do gabarito —
+                  importe das peças ou dos marcadores da foto, ou crie do zero.
+                </p>
 
-              {/* Cards avulsos */}
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cards Avulsos</h3>
-                {printExtras.map((e) => (
-                  <div key={e.id} className="bg-white border border-slate-200 rounded p-2 space-y-2">
-                    <div className="flex gap-2">
-                      <input type="text" value={e.marker} onChange={(ev) => updateExtra(e.id, 'marker', ev.target.value)} placeholder="Letra" aria-label="Letra do marcador" title="Opcional: letra do marcador" className="w-16 px-2 py-1 border border-slate-200 rounded text-xs font-bold uppercase outline-none focus:border-slate-400" />
-                      <input type="text" value={e.title} onChange={(ev) => updateExtra(e.id, 'title', ev.target.value)} placeholder="Título do card" className="flex-1 px-2 py-1 border border-slate-200 rounded text-xs uppercase outline-none" />
-                      <button onClick={() => removeExtra(e.id)} aria-label="Remover card" className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={importCardsFromPieces} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded"><Layers size={13} /> Das peças ({savedArts.length})</button>
+                  <button onClick={importCardsFromMarkers} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-orange-700 bg-orange-100 hover:bg-orange-200 rounded"><MapPin size={13} /> Dos marcadores</button>
+                  <button onClick={() => addPrintCard()} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded"><Plus size={13} /> Card em branco</button>
+                  <button onClick={() => addPrintCard({ title: 'ESTANDE 3D', image: (activeView || projectViews[0])?.image || null })} disabled={projectViews.length === 0} className="py-2 flex items-center justify-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded disabled:opacity-40 disabled:cursor-not-allowed"><ImageIcon size={13} /> Foto 3D</button>
+                </div>
+
+                {printCards.length === 0 && (
+                  <p className="text-xs text-slate-400 italic bg-white p-3 rounded border border-slate-200 text-center">Nenhum card ainda. Use os botões acima.</p>
+                )}
+
+                {printCards.map((c, idx) => (
+                  <div key={c.id} className="bg-white border border-slate-200 rounded p-2 space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <input type="text" value={c.marker} onChange={(ev) => updatePrintCard(c.id, 'marker', ev.target.value)} placeholder="Letra" aria-label="Letra do marcador" className="w-14 px-2 py-1 border border-slate-200 rounded text-xs font-black text-center uppercase outline-none focus:border-green-500" />
+                      <input type="text" value={c.title} onChange={(ev) => updatePrintCard(c.id, 'title', ev.target.value)} placeholder="Material / título" className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded text-xs uppercase outline-none focus:border-green-500" />
+                      <button onClick={() => movePrintCard(c.id, -1)} disabled={idx === 0} aria-label="Mover para cima" className="text-slate-300 hover:text-slate-600 disabled:opacity-30">▲</button>
+                      <button onClick={() => movePrintCard(c.id, 1)} disabled={idx === printCards.length - 1} aria-label="Mover para baixo" className="text-slate-300 hover:text-slate-600 disabled:opacity-30">▼</button>
+                      <button onClick={() => removePrintCard(c.id)} aria-label="Remover card" className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
                     </div>
                     <div className="flex items-center gap-2">
-                      {e.image && <img src={e.image} alt="" className="w-10 h-10 object-cover rounded border border-slate-200" />}
-                      <label className="cursor-pointer px-2 py-1.5 text-[11px] font-bold bg-slate-200 hover:bg-slate-300 rounded">
-                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(ev) => { uploadExtraImage(e.id, ev.target.files[0]); ev.target.value = ''; }} />
-                        {e.image ? 'Trocar arte' : 'Subir arte'}
+                      {c.image
+                        ? <img src={c.image} alt="" className="w-12 h-12 object-cover rounded border border-slate-200" />
+                        : <div className="w-12 h-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[8px] text-slate-400 text-center leading-none">SEM ARTE</div>}
+                      <label className="cursor-pointer px-2 py-1.5 text-[11px] font-bold bg-green-100 text-green-700 hover:bg-green-200 rounded">
+                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(ev) => { uploadPrintCardImage(c.id, ev.target.files[0]); ev.target.value = ''; }} />
+                        {c.image ? 'Trocar arte' : 'Subir arte (img/PDF)'}
                       </label>
+                      {c.image && (
+                        <button onClick={() => updatePrintCard(c.id, 'image', null)} className="text-[11px] text-slate-400 hover:text-red-500">remover arte</button>
+                      )}
                     </div>
                   </div>
                 ))}
-                <div className="flex gap-2">
-                  <button onClick={addExtraCard} className="flex-1 py-2 flex items-center justify-center gap-1 text-xs font-bold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded"><Plus size={14} /> Card avulso</button>
-                  {projectViews.length > 0 && (
-                    <button onClick={() => addViewAsExtra(activeView || projectViews[0])} className="flex-1 py-2 flex items-center justify-center gap-1 text-xs font-bold text-orange-600 bg-orange-100 hover:bg-orange-200 rounded"><ImageIcon size={14} /> Foto 3D</button>
-                  )}
-                </div>
               </div>
             </div>
           )}
@@ -945,7 +927,7 @@ export default function App() {
                 className="shadow-2xl shrink-0"
                 style={{ width: COVER_WIDTH, height: COVER_HEIGHT, transform: `scale(${printScale})`, transformOrigin: 'center' }}
               >
-                <ApprovalPrint config={printConfig} cards={printCards} />
+                <ApprovalPrint config={printConfig} cards={printCardsForRender} />
               </div>
             </div>
           </div>
@@ -982,7 +964,7 @@ export default function App() {
         ))}
         {hasApproval && (
           <div style={{ marginBottom: '100px' }}>
-            <ApprovalPrint ref={approvalRef} config={printConfig} cards={printCards} />
+            <ApprovalPrint ref={approvalRef} config={printConfig} cards={printCardsForRender} />
           </div>
         )}
         {savedArts.map((art) => (
