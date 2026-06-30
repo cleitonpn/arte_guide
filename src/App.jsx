@@ -86,6 +86,23 @@ export default function App() {
     }
   }, [projectViews, activeViewId]);
 
+  // Backfill da proporção para vistas salvas antes desse recurso (uma vez por id).
+  const ratioAttempted = useRef(new Set());
+  useEffect(() => {
+    const missing = projectViews.filter((v) => v.ratio == null && !ratioAttempted.current.has(v.id));
+    if (missing.length === 0) return;
+    missing.forEach((v) => ratioAttempted.current.add(v.id));
+    missing.forEach((v) => {
+      const img = new Image();
+      img.onload = () => {
+        if (!img.naturalHeight) return;
+        const ratio = img.naturalWidth / img.naturalHeight;
+        setProjectViews((prev) => prev.map((x) => (x.id === v.id ? { ...x, ratio } : x)));
+      };
+      img.src = v.image;
+    });
+  }, [projectViews, setProjectViews]);
+
   const showToast = (type, message) => {
     setToast({ type, message });
     window.clearTimeout(showToast._t);
@@ -97,9 +114,16 @@ export default function App() {
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const newId = Date.now().toString();
-        setProjectViews((prev) => [...prev, { id: newId, image: event.target.result, markers: [] }]);
-        setActiveViewId(newId);
+        const dataUrl = event.target.result;
+        // Guarda a proporção real da imagem para o PDF não distorcer.
+        const img = new Image();
+        img.onload = () => {
+          const newId = Date.now().toString();
+          const ratio = img.naturalHeight ? img.naturalWidth / img.naturalHeight : null;
+          setProjectViews((prev) => [...prev, { id: newId, image: dataUrl, markers: [], ratio }]);
+          setActiveViewId(newId);
+        };
+        img.src = dataUrl;
       };
       reader.readAsDataURL(file);
     }
@@ -972,6 +996,7 @@ export default function App() {
               ref={(el) => { if (el) coverRefs.current.set(view.id, el); else coverRefs.current.delete(view.id); }}
               image={view.image}
               markers={view.markers}
+              ratio={view.ratio}
               clientName={clientName}
               viewIndex={index + 1}
               totalViews={projectViews.length}
