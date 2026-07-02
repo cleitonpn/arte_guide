@@ -10,6 +10,8 @@ export const COLORS = {
   bleed: '#9932cc',
   hatch: '#a55eea',
   dim: '#ff0000',
+  guide: '#2563eb',
+  guideText: '#1d4ed8',
 };
 
 // Parâmetros geométricos do gabarito técnico.

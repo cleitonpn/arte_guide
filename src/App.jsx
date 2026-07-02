@@ -45,6 +45,7 @@ export default function App() {
   const [safeWidthStr, setSafeWidthStr] = useLocalStorage('ag.safeWidthStr', '');
   const [safeHeightStr, setSafeHeightStr] = useLocalStorage('ag.safeHeightStr', '');
   const [zones, setZones] = useLocalStorage('ag.zones', []);
+  const [guides, setGuides] = useLocalStorage('ag.guides', []);
 
   const [savedArts, setSavedArts] = useLocalStorage('ag.savedArts', []);
 
@@ -77,7 +78,7 @@ export default function App() {
 
   const currentArt = {
     id: 'current', clientName, itemName, markerRef, title,
-    widthStr, heightStr, unit, bleedStr, bleedUnit, bleedNotePos, safeWidthStr, safeHeightStr, zones,
+    widthStr, heightStr, unit, bleedStr, bleedUnit, bleedNotePos, safeWidthStr, safeHeightStr, zones, guides,
   };
 
   // Garante uma vista ativa válida sempre que a lista muda.
@@ -189,6 +190,7 @@ export default function App() {
     setSafeWidthStr(art.safeWidthStr ?? '');
     setSafeHeightStr(art.safeHeightStr ?? '');
     setZones(art.zones ?? []);
+    setGuides(art.guides ?? []);
   };
 
   // Editar: traz a peça de volta ao formulário e a remove da lista.
@@ -336,6 +338,23 @@ export default function App() {
       ...markers.map((m) => ({ id: newCardId(), marker: m, title: '', image: null })),
     ]);
     showToast('success', `${markers.length} card(s) criado(s) dos marcadores.`);
+  };
+
+  const addGuide = () => {
+    setGuides((prev) => [...prev, {
+      id: Date.now(), label: 'LOGO',
+      w: '1.0', h: '0.5',
+      alignX: 'center', alignY: 'center',
+      customX: '0', customY: '0',
+    }]);
+  };
+
+  const updateGuide = (id, field, value) => {
+    setGuides((prev) => prev.map((g) => (g.id === id ? { ...g, [field]: value } : g)));
+  };
+
+  const removeGuide = (id) => {
+    setGuides((prev) => prev.filter((g) => g.id !== id));
   };
 
   const addZone = () => {
@@ -822,6 +841,75 @@ export default function App() {
                   );
                 })}
                 <button onClick={addZone} className="w-full py-2 flex items-center justify-center gap-2 text-xs font-bold text-red-600 bg-red-100 hover:bg-red-200 rounded"><Plus size={14} /> Nova Área de Corte</button>
+              </div>
+
+              {/* GUIAS DE POSICIONAMENTO DE ELEMENTOS */}
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-xs font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1"><MapPin size={14} /> Guias de Posicionamento</h2>
+                </div>
+                <p className="text-[10px] text-blue-700 leading-tight">
+                  Marque onde cada elemento (logo, texto, foto) deve ser aplicado na arte, com posição e tamanho exatos.
+                </p>
+
+                {guides.map((guide, gIdx) => {
+                  const showCustomX = guide.alignX === 'customLeft' || guide.alignX === 'customRight';
+                  const showCustomY = guide.alignY === 'customTop' || guide.alignY === 'customBottom';
+                  return (
+                    <div key={guide.id} className="bg-white p-3 rounded border border-blue-200 shadow-sm space-y-3 relative">
+                      <div className="flex gap-2 items-center">
+                        <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-black shrink-0">{gIdx + 1}</div>
+                        <input type="text" value={guide.label} onChange={(e) => updateGuide(guide.id, 'label', e.target.value)} placeholder="Nome do elemento (ex: LOGO)" className="w-full px-2 py-1 text-sm border-b border-slate-200 outline-none focus:border-blue-500 font-semibold uppercase" />
+                        <button aria-label="Remover guia" onClick={() => removeGuide(guide.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase">Larg. ({unit})</label><input type="number" step="0.01" value={guide.w} onChange={(e) => updateGuide(guide.id, 'w', e.target.value)} className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs outline-none focus:border-blue-500" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-500 uppercase">Alt. ({unit})</label><input type="number" step="0.01" value={guide.h} onChange={(e) => updateGuide(guide.id, 'h', e.target.value)} className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs outline-none focus:border-blue-500" /></div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={guide.alignX} onChange={(e) => updateGuide(guide.id, 'alignX', e.target.value)} aria-label="Alinhamento horizontal" className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs outline-none focus:border-blue-500">
+                          <option value="left">Esq</option>
+                          <option value="center">Centro H</option>
+                          <option value="right">Dir</option>
+                          <option value="customLeft">Exato da Esq.</option>
+                          <option value="customRight">Exato da Dir.</option>
+                        </select>
+                        <select value={guide.alignY} onChange={(e) => updateGuide(guide.id, 'alignY', e.target.value)} aria-label="Alinhamento vertical" className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs outline-none focus:border-blue-500">
+                          <option value="top">Topo</option>
+                          <option value="center">Centro V</option>
+                          <option value="bottom">Base</option>
+                          <option value="customTop">Exato do Topo</option>
+                          <option value="customBottom">Exato da Base</option>
+                        </select>
+                      </div>
+
+                      {(showCustomX || showCustomY) && (
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-blue-100">
+                          {showCustomX ? (
+                            <div>
+                              <label className="text-[10px] font-bold text-blue-700 uppercase leading-none block mb-1">
+                                Da {guide.alignX === 'customLeft' ? 'Esquerda' : 'Direita'} ({unit})
+                              </label>
+                              <input type="number" step="0.01" value={guide.customX} onChange={(e) => updateGuide(guide.id, 'customX', e.target.value)} className="w-full px-2 py-1 bg-white border border-blue-300 rounded text-xs outline-none focus:border-blue-600 shadow-sm" />
+                            </div>
+                          ) : <div />}
+                          {showCustomY ? (
+                            <div>
+                              <label className="text-[10px] font-bold text-blue-700 uppercase leading-none block mb-1">
+                                D{guide.alignY === 'customTop' ? 'o Topo' : 'a Base'} ({unit})
+                              </label>
+                              <input type="number" step="0.01" value={guide.customY} onChange={(e) => updateGuide(guide.id, 'customY', e.target.value)} className="w-full px-2 py-1 bg-white border border-blue-300 rounded text-xs outline-none focus:border-blue-600 shadow-sm" />
+                            </div>
+                          ) : <div />}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button onClick={addGuide} className="w-full py-2 flex items-center justify-center gap-2 text-xs font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded"><Plus size={14} /> Novo Guia de Elemento</button>
               </div>
             </div>
           )}

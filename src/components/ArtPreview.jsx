@@ -17,6 +17,7 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
     safeWidthStr,
     safeHeightStr,
     zones,
+    guides = [],
     markerRef,
   } = art;
 
@@ -251,6 +252,50 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                     </text>
                   </g>
                 )}
+
+                {/* Guias de posicionamento de elementos — retângulos azuis de referência */}
+                {guides.map((g, gIdx) => {
+                  const gw = toCm(g.w, unit) * scale;
+                  const gh = toCm(g.h, unit) * scale;
+                  if (gw <= 0 || gh <= 0) return null;
+
+                  const cX = toCm(g.customX, unit) * scale;
+                  let gx = 0;
+                  if (g.alignX === 'center') gx = w / 2 - gw / 2;
+                  else if (g.alignX === 'right') gx = w - gw;
+                  else if (g.alignX === 'customLeft') gx = cX;
+                  else if (g.alignX === 'customRight') gx = w - cX - gw;
+
+                  const cY = toCm(g.customY, unit) * scale;
+                  let gy = 0;
+                  if (g.alignY === 'center') gy = h / 2 - gh / 2;
+                  else if (g.alignY === 'bottom') gy = h - gh;
+                  else if (g.alignY === 'customTop') gy = cY;
+                  else if (g.alignY === 'customBottom') gy = h - cY - gh;
+
+                  const labelFs = Math.max(11, Math.min(centerFontSize * 0.9, gw * 0.12, gh * 0.35));
+                  const dimFs = Math.max(9, labelFs * 0.75);
+
+                  // Índice visual (A, B, C...) para identificar cada guia.
+                  const badge = String.fromCharCode(65 + gIdx);
+
+                  return (
+                    <g key={g.id}>
+                      <rect x={gx} y={gy} width={gw} height={gh} fill={COLORS.guide} fillOpacity="0.07" stroke={COLORS.guide} strokeWidth={strokeThick} strokeDasharray="14,6" />
+                      {/* Badge no canto superior esquerdo */}
+                      <rect x={gx} y={gy} width={labelFs * 1.4} height={labelFs * 1.4} fill={COLORS.guide} rx="3" />
+                      <text x={gx + labelFs * 0.7} y={gy + labelFs * 1.05} fill="#ffffff" fontSize={labelFs * 0.9} fontFamily="sans-serif" textAnchor="middle" fontWeight="900">{badge}</text>
+                      {/* Nome do elemento */}
+                      <text x={gx + gw / 2} y={gy + gh / 2 - dimFs * 0.6} fill={COLORS.guideText} fontSize={labelFs} fontFamily="sans-serif" textAnchor="middle" fontWeight="900" stroke="#ffffff" strokeWidth="3" paintOrder="stroke">
+                        {(g.label || 'ELEMENTO').toUpperCase()}
+                      </text>
+                      {/* Dimensões */}
+                      <text x={gx + gw / 2} y={gy + gh / 2 + dimFs * 0.8} fill={COLORS.guideText} fontSize={dimFs} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" stroke="#ffffff" strokeWidth="2.5" paintOrder="stroke">
+                        {g.w} x {g.h} {unit}
+                      </text>
+                    </g>
+                  );
+                })}
 
                 {/* Dimension callout lines — always outside the bleed outer box */}
                 <g stroke={COLORS.dim} strokeWidth={strokeThin}>
