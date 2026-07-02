@@ -41,6 +41,8 @@ export default function App() {
   const [unit, setUnit] = useLocalStorage('ag.unit', 'cm');
   const [bleedStr, setBleedStr] = useLocalStorage('ag.bleedStr', '3');
   const [bleedUnit, setBleedUnit] = useLocalStorage('ag.bleedUnit', 'cm');
+  const [safeWidthStr, setSafeWidthStr] = useLocalStorage('ag.safeWidthStr', '');
+  const [safeHeightStr, setSafeHeightStr] = useLocalStorage('ag.safeHeightStr', '');
   const [zones, setZones] = useLocalStorage('ag.zones', []);
 
   const [savedArts, setSavedArts] = useLocalStorage('ag.savedArts', []);
@@ -74,7 +76,7 @@ export default function App() {
 
   const currentArt = {
     id: 'current', clientName, itemName, markerRef, title,
-    widthStr, heightStr, unit, bleedStr, bleedUnit, zones,
+    widthStr, heightStr, unit, bleedStr, bleedUnit, safeWidthStr, safeHeightStr, zones,
   };
 
   // Garante uma vista ativa válida sempre que a lista muda.
@@ -182,6 +184,8 @@ export default function App() {
     setUnit(art.unit ?? 'cm');
     setBleedStr(art.bleedStr ?? '0');
     setBleedUnit(art.bleedUnit ?? 'cm');
+    setSafeWidthStr(art.safeWidthStr ?? '');
+    setSafeHeightStr(art.safeHeightStr ?? '');
     setZones(art.zones ?? []);
   };
 
@@ -694,6 +698,19 @@ export default function App() {
                       <option value="cm">cm</option>
                       <option value="mm">mm</option>
                     </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-green-700 mb-1">Área de Segurança <span className="font-normal text-slate-400">(opcional — linha verde dentro da arte)</span></label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Largura ({unit})</label>
+                      <input type="number" step={unit === 'm' ? '0.01' : '0.1'} min="0" value={safeWidthStr} onChange={(e) => setSafeWidthStr(e.target.value)} placeholder="Ex: 2.65" className="w-full px-2 py-1.5 border border-green-300 rounded outline-none text-sm focus:ring-1 focus:ring-green-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Altura ({unit})</label>
+                      <input type="number" step={unit === 'm' ? '0.01' : '0.1'} min="0" value={safeHeightStr} onChange={(e) => setSafeHeightStr(e.target.value)} placeholder="Ex: 0.90" className="w-full px-2 py-1.5 border border-green-300 rounded outline-none text-sm focus:ring-1 focus:ring-green-500" />
+                    </div>
                   </div>
                 </div>
               </div>

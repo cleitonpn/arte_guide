@@ -13,6 +13,8 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
     unit,
     bleedStr,
     bleedUnit,
+    safeWidthStr,
+    safeHeightStr,
     zones,
     markerRef,
   } = art;
@@ -22,13 +24,23 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
   const w_cm = toCm(widthStr, unit);
   const h_cm = toCm(heightStr, unit);
   const b_cm = bleedToCm(bleedStr, bleedUnit);
+  const sw_cm = toCm(safeWidthStr, unit);
+  const sh_cm = toCm(safeHeightStr, unit);
 
-  const maxDim_cm = Math.max(w_cm, h_cm) || 1;
+  // Scale relative to the total canvas (art + bleed on every side).
+  // The art rect (w × h) is immutable; bleed expands OUTSIDE it.
+  const totalW_cm = w_cm + 2 * b_cm;
+  const totalH_cm = h_cm + 2 * b_cm;
+  const maxDim_cm = Math.max(totalW_cm, totalH_cm) || Math.max(w_cm, h_cm) || 1;
   const scale = SVG.scaleTarget / maxDim_cm;
 
   const w = w_cm * scale;
   const h = h_cm * scale;
   const b = b_cm * scale;
+  const sw = sw_cm * scale;
+  const sh = sh_cm * scale;
+
+  const hasSafeArea = sw > 0 && sh > 0 && sw <= w && sh <= h;
 
   const { strokeThin, strokeThick, offset, crossSize, tickSize } = SVG;
 
@@ -36,30 +48,31 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
   const dimFontSize = 18;
   const baseCenterFontSize = 16;
 
-  const safeW = Math.max(0, w - 2 * b);
-  const safeH = Math.max(0, h - 2 * b);
+  // Dimension callout lines must sit outside the bleed outer box.
+  // dimOffset is the distance from the art edge to the callout line.
+  const dimOffset = b + offset;
 
+  // Symmetric padding around the total canvas (bleed + art) for labels and callouts.
+  const padX = dimOffset + 80;
+  const padY = dimOffset + 80;
+
+  // Center info box for the sangria notice — sized relative to the art area.
   let boxW = 260;
   let boxH = 60;
   let centerFontSize = baseCenterFontSize;
-  let showCenterBox = true;
+  let showCenterBox = false;
 
-  if (safeW > 0 && safeH > 0) {
-    const scaleBox = Math.min(1, (safeW * 0.8) / boxW, (safeH * 0.8) / boxH);
+  if (b > 0 && w > 0 && h > 0) {
+    const scaleBox = Math.min(1, (w * 0.8) / boxW, (h * 0.8) / boxH);
     boxW *= scaleBox;
     boxH *= scaleBox;
     centerFontSize *= scaleBox;
-    if (scaleBox < 0.2) showCenterBox = false;
-  } else {
-    showCenterBox = false;
+    showCenterBox = scaleBox >= 0.2;
   }
 
-  const padX = offset + 80;
-  const padY = offset + 80;
   const landscape = isLandscape(widthStr, heightStr);
   const hasMeasures = w > 0 && h > 0;
 
-  // Proteção para o plural de marcadores ("A, B" -> agrupado).
   const hasMultipleMarkers = typeof markerRef === 'string' && markerRef.includes(',');
 
   return (
@@ -77,7 +90,7 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
           <div className="flex-1 w-full p-[4%] flex items-center justify-center overflow-hidden">
             {hasMeasures ? (
               <svg
-                viewBox={`${-padX} ${-padY} ${w + 2 * padX} ${h + 2 * padY}`}
+                viewBox={`${-padX} ${-padY} ${w + 2 * b + 2 * padX} ${h + 2 * b + 2 * padY}`}
                 className="w-full h-full drop-shadow-sm"
                 xmlns="http://www.w3.org/2000/svg"
               >
@@ -90,13 +103,14 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   </pattern>
                 </defs>
 
-                <text x="0" y={-offset - 25} fill="#666666" fontSize={titleFontSize} fontFamily="sans-serif" textAnchor="start" fontWeight="bold">
+                {/* Title above the art area */}
+                <text x="0" y={-(dimOffset + 25)} fill="#666666" fontSize={titleFontSize} fontFamily="sans-serif" textAnchor="start" fontWeight="bold">
                   {title.toUpperCase()}
                 </text>
 
-                {/* Selo do marcador */}
+                {/* Marker badge (top-right of art) */}
                 {markerRef && (
-                  <g transform={`translate(${w}, ${-offset - 40})`}>
+                  <g transform={`translate(${w}, ${-(dimOffset + 40)})`}>
                     {hasMultipleMarkers ? (
                       <rect
                         x={-40 - markerRef.length * 5}
@@ -115,8 +129,16 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   </g>
                 )}
 
-                <rect x="0" y="0" width={w} height={h} fill="#fcfcfc" stroke="#888888" strokeWidth={strokeThin} strokeDasharray="8,8" />
+                {/* Bleed region: outer dashed box filled with hatch.
+                    The art rect drawn afterwards visually masks the center. */}
+                {b > 0 && (
+                  <rect x={-b} y={-b} width={w + 2 * b} height={h + 2 * b} fill="url(#hatchPattern)" stroke="#888888" strokeWidth={strokeThin} strokeDasharray="8,8" />
+                )}
 
+                {/* Art area — the immutable final print dimensions */}
+                <rect x="0" y="0" width={w} height={h} fill="#fcfcfc" stroke="#555555" strokeWidth={strokeThick} />
+
+                {/* Corner crop marks at the art boundary */}
                 <g stroke={COLORS.dim} strokeWidth={strokeThin}>
                   <path d={`M${-crossSize},0 L${crossSize},0 M0,${-crossSize} L0,${crossSize}`} />
                   <path d={`M${w - crossSize},0 L${w + crossSize},0 M${w},${-crossSize} L${w},${crossSize}`} />
@@ -124,12 +146,8 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   <path d={`M${w - crossSize},${h} L${w + crossSize},${h} M${w},${h - crossSize} L${w},${h + crossSize}`} />
                 </g>
 
-                {safeW > 0 && safeH > 0 && (
-                  <rect x={b} y={b} width={safeW} height={safeH} fill="url(#hatchPattern)" stroke="#000000" strokeWidth={strokeThick} />
-                )}
-
-                {/* Áreas de interferência com coordenadas precisas */}
-                {safeW > 0 && safeH > 0 && zones.map((z) => {
+                {/* Interference zones — positioned relative to art area origin (0, 0) */}
+                {zones.map((z) => {
                   const zw = toCm(z.w, unit) * scale;
                   const zh = toCm(z.h, unit) * scale;
                   if (zw <= 0 || zh <= 0) return null;
@@ -138,19 +156,19 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   const isDiagonal = z.type === 'diagonal';
 
                   if (!isDiagonal) {
-                    let zx = b;
                     const cX = toCm(z.customX, unit) * scale;
-                    if (z.alignX === 'center') zx = b + safeW / 2 - zw / 2;
-                    else if (z.alignX === 'right') zx = b + safeW - zw;
-                    else if (z.alignX === 'customLeft') zx = b + cX;
-                    else if (z.alignX === 'customRight') zx = b + safeW - cX - zw;
+                    let zx = 0;
+                    if (z.alignX === 'center') zx = w / 2 - zw / 2;
+                    else if (z.alignX === 'right') zx = w - zw;
+                    else if (z.alignX === 'customLeft') zx = cX;
+                    else if (z.alignX === 'customRight') zx = w - cX - zw;
 
-                    let zy = b;
                     const cY = toCm(z.customY, unit) * scale;
-                    if (z.alignY === 'center') zy = b + safeH / 2 - zh / 2;
-                    else if (z.alignY === 'bottom') zy = b + safeH - zh;
-                    else if (z.alignY === 'customTop') zy = b + cY;
-                    else if (z.alignY === 'customBottom') zy = b + safeH - cY - zh;
+                    let zy = 0;
+                    if (z.alignY === 'center') zy = h / 2 - zh / 2;
+                    else if (z.alignY === 'bottom') zy = h - zh;
+                    else if (z.alignY === 'customTop') zy = cY;
+                    else if (z.alignY === 'customBottom') zy = h - cY - zh;
 
                     return (
                       <g key={z.id}>
@@ -167,26 +185,26 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                     );
                   }
 
-                  // Corte diagonal (chanfro) por canto.
+                  // Diagonal cut (chamfer) by corner — within art area.
                   let pts = '';
                   let cx = 0;
                   let cy = 0;
                   if (z.corner === 'tl') {
-                    pts = `${b},${b} ${b + zw},${b} ${b},${b + zh}`;
-                    cx = b + zw / 3;
-                    cy = b + zh / 3;
+                    pts = `0,0 ${zw},0 0,${zh}`;
+                    cx = zw / 3;
+                    cy = zh / 3;
                   } else if (z.corner === 'tr') {
-                    pts = `${b + safeW - zw},${b} ${b + safeW},${b} ${b + safeW},${b + zh}`;
-                    cx = b + safeW - zw / 3;
-                    cy = b + zh / 3;
+                    pts = `${w - zw},0 ${w},0 ${w},${zh}`;
+                    cx = w - zw / 3;
+                    cy = zh / 3;
                   } else if (z.corner === 'bl') {
-                    pts = `${b},${b + safeH - zh} ${b + zw},${b + safeH} ${b},${b + safeH}`;
-                    cx = b + zw / 3;
-                    cy = b + safeH - zh / 3;
+                    pts = `0,${h - zh} ${zw},${h} 0,${h}`;
+                    cx = zw / 3;
+                    cy = h - zh / 3;
                   } else if (z.corner === 'br') {
-                    pts = `${b + safeW - zw},${b + safeH} ${b + safeW},${b + safeH - zh} ${b + safeW},${b + safeH}`;
-                    cx = b + safeW - zw / 3;
-                    cy = b + safeH - zh / 3;
+                    pts = `${w - zw},${h} ${w},${h - zh} ${w},${h}`;
+                    cx = w - zw / 3;
+                    cy = h - zh / 3;
                   }
                   return (
                     <g key={z.id}>
@@ -203,27 +221,59 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   );
                 })}
 
-                <g stroke={COLORS.dim} strokeWidth={strokeThin}>
-                  <line x1="0" y1={-offset} x2={w} y2={-offset} />
-                  <line x1="0" y1={-offset - tickSize} x2="0" y2={-offset + tickSize} />
-                  <line x1={w} y1={-offset - tickSize} x2={w} y2={-offset + tickSize} />
-                  <line x1="0" y1={0} x2="0" y2={-offset} stroke="#888888" strokeDasharray="6,6" />
-                  <line x1={w} y1={0} x2={w} y2={-offset} stroke="#888888" strokeDasharray="6,6" />
+                {/* Safe area — optional green guide line centered in the art */}
+                {hasSafeArea && (
+                  <g>
+                    <rect
+                      x={(w - sw) / 2}
+                      y={(h - sh) / 2}
+                      width={sw}
+                      height={sh}
+                      fill="none"
+                      stroke="#16a34a"
+                      strokeWidth={strokeThick}
+                      strokeDasharray="10,5"
+                    />
+                    <text
+                      x={w / 2}
+                      y={(h - sh) / 2 - 8}
+                      fill="#16a34a"
+                      fontSize={Math.max(10, dimFontSize * 0.75)}
+                      fontFamily="sans-serif"
+                      textAnchor="middle"
+                      fontWeight="bold"
+                      stroke="#ffffff"
+                      strokeWidth="3"
+                      paintOrder="stroke"
+                    >
+                      ÁREA DE SEGURANÇA ({safeWidthStr} x {safeHeightStr} {unit})
+                    </text>
+                  </g>
+                )}
 
-                  <line x1={-offset} y1="0" x2={-offset} y2={h} />
-                  <line x1={-offset - tickSize} y1="0" x2={-offset + tickSize} y2="0" />
-                  <line x1={-offset - tickSize} y1={h} x2={-offset + tickSize} y2={h} />
-                  <line x1={0} y1={0} x2={-offset} y2={0} stroke="#888888" strokeDasharray="6,6" />
-                  <line x1={0} y1={h} x2={-offset} y2={h} stroke="#888888" strokeDasharray="6,6" />
+                {/* Dimension callout lines — always outside the bleed outer box */}
+                <g stroke={COLORS.dim} strokeWidth={strokeThin}>
+                  <line x1="0" y1={-dimOffset} x2={w} y2={-dimOffset} />
+                  <line x1="0" y1={-dimOffset - tickSize} x2="0" y2={-dimOffset + tickSize} />
+                  <line x1={w} y1={-dimOffset - tickSize} x2={w} y2={-dimOffset + tickSize} />
+                  <line x1="0" y1="0" x2="0" y2={-dimOffset} stroke="#888888" strokeDasharray="6,6" />
+                  <line x1={w} y1="0" x2={w} y2={-dimOffset} stroke="#888888" strokeDasharray="6,6" />
+
+                  <line x1={-dimOffset} y1="0" x2={-dimOffset} y2={h} />
+                  <line x1={-dimOffset - tickSize} y1="0" x2={-dimOffset + tickSize} y2="0" />
+                  <line x1={-dimOffset - tickSize} y1={h} x2={-dimOffset + tickSize} y2={h} />
+                  <line x1="0" y1="0" x2={-dimOffset} y2="0" stroke="#888888" strokeDasharray="6,6" />
+                  <line x1="0" y1={h} x2={-dimOffset} y2={h} stroke="#888888" strokeDasharray="6,6" />
                 </g>
 
-                <text x={w / 2} y={-offset - 10} fill={COLORS.dim} fontSize={dimFontSize} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold">
+                <text x={w / 2} y={-dimOffset - 10} fill={COLORS.dim} fontSize={dimFontSize} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold">
                   {formatDim(widthStr, unit)} {unit}
                 </text>
-                <text x={-offset - 10} y={h / 2} fill={COLORS.dim} fontSize={dimFontSize} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" transform={`rotate(-90 ${-offset - 10} ${h / 2})`}>
+                <text x={-dimOffset - 10} y={h / 2} fill={COLORS.dim} fontSize={dimFontSize} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" transform={`rotate(-90 ${-dimOffset - 10} ${h / 2})`}>
                   {formatDim(heightStr, unit)} {unit}
                 </text>
 
+                {/* Sangria info box centered in the art area */}
                 {showCenterBox && (
                   <g transform={`translate(${w / 2 - boxW / 2}, ${h / 2 - boxH / 2})`}>
                     <rect x="0" y="0" width={boxW} height={boxH} fill="#ffffff" stroke={COLORS.bleed} strokeWidth={strokeThin} />
