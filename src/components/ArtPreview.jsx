@@ -13,6 +13,7 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
     unit,
     bleedStr,
     bleedUnit,
+    bleedNotePos = 'center',
     safeWidthStr,
     safeHeightStr,
     zones,
@@ -273,9 +274,21 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   {formatDim(heightStr, unit)} {unit}
                 </text>
 
-                {/* Sangria info box centered in the art area */}
-                {showCenterBox && (
-                  <g transform={`translate(${w / 2 - boxW / 2}, ${h / 2 - boxH / 2})`}>
+                {/* Sangria info box — posição configurável dentro da arte */}
+                {showCenterBox && (() => {
+                  const pad = 16;
+                  const posX = {
+                    tl: pad, top: w / 2 - boxW / 2, tr: w - boxW - pad,
+                    left: pad, center: w / 2 - boxW / 2, right: w - boxW - pad,
+                    bl: pad, bottom: w / 2 - boxW / 2, br: w - boxW - pad,
+                  }[bleedNotePos] ?? w / 2 - boxW / 2;
+                  const posY = {
+                    tl: pad, top: pad, tr: pad,
+                    left: h / 2 - boxH / 2, center: h / 2 - boxH / 2, right: h / 2 - boxH / 2,
+                    bl: h - boxH - pad, bottom: h - boxH - pad, br: h - boxH - pad,
+                  }[bleedNotePos] ?? h / 2 - boxH / 2;
+                  return (
+                  <g transform={`translate(${posX}, ${posY})`}>
                     <rect x="0" y="0" width={boxW} height={boxH} fill="#ffffff" stroke={COLORS.bleed} strokeWidth={strokeThin} />
                     <text x={boxW / 2} y={boxH * 0.45} fill={COLORS.bleed} fontSize={centerFontSize} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold">
                       PREVÊ SANGRIA DE {inputBleed}
@@ -285,7 +298,8 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                       EM AMBOS OS LADOS
                     </text>
                   </g>
-                )}
+                  );
+                })()}
               </svg>
             ) : (
               <div className="text-center text-slate-400 px-6">

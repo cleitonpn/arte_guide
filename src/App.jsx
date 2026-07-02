@@ -41,6 +41,7 @@ export default function App() {
   const [unit, setUnit] = useLocalStorage('ag.unit', 'cm');
   const [bleedStr, setBleedStr] = useLocalStorage('ag.bleedStr', '3');
   const [bleedUnit, setBleedUnit] = useLocalStorage('ag.bleedUnit', 'cm');
+  const [bleedNotePos, setBleedNotePos] = useLocalStorage('ag.bleedNotePos', 'center');
   const [safeWidthStr, setSafeWidthStr] = useLocalStorage('ag.safeWidthStr', '');
   const [safeHeightStr, setSafeHeightStr] = useLocalStorage('ag.safeHeightStr', '');
   const [zones, setZones] = useLocalStorage('ag.zones', []);
@@ -76,7 +77,7 @@ export default function App() {
 
   const currentArt = {
     id: 'current', clientName, itemName, markerRef, title,
-    widthStr, heightStr, unit, bleedStr, bleedUnit, safeWidthStr, safeHeightStr, zones,
+    widthStr, heightStr, unit, bleedStr, bleedUnit, bleedNotePos, safeWidthStr, safeHeightStr, zones,
   };
 
   // Garante uma vista ativa válida sempre que a lista muda.
@@ -184,6 +185,7 @@ export default function App() {
     setUnit(art.unit ?? 'cm');
     setBleedStr(art.bleedStr ?? '0');
     setBleedUnit(art.bleedUnit ?? 'cm');
+    setBleedNotePos(art.bleedNotePos ?? 'center');
     setSafeWidthStr(art.safeWidthStr ?? '');
     setSafeHeightStr(art.safeHeightStr ?? '');
     setZones(art.zones ?? []);
@@ -698,6 +700,29 @@ export default function App() {
                       <option value="cm">cm</option>
                       <option value="mm">mm</option>
                     </select>
+                  </div>
+                  <label className="block text-[10px] text-slate-500 mt-1.5 mb-1">Posição do aviso de sangria</label>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { v: 'tl', label: '↖ Sup. Esq.' },
+                      { v: 'top', label: '↑ Superior' },
+                      { v: 'tr', label: '↗ Sup. Dir.' },
+                      { v: 'left', label: '← Esquerda' },
+                      { v: 'center', label: '• Centro' },
+                      { v: 'right', label: '→ Direita' },
+                      { v: 'bl', label: '↙ Inf. Esq.' },
+                      { v: 'bottom', label: '↓ Inferior' },
+                      { v: 'br', label: '↘ Inf. Dir.' },
+                    ].map(({ v, label }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setBleedNotePos(v)}
+                        className={`text-[9px] font-bold py-1 rounded border transition-colors ${bleedNotePos === v ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <div>
