@@ -16,6 +16,10 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
     bleedNotePos = 'center',
     safeWidthStr,
     safeHeightStr,
+    safeAlignX = 'center',
+    safeAlignY = 'center',
+    safeCustomX = '0',
+    safeCustomY = '0',
     zones,
     guides = [],
     markerRef,
@@ -223,35 +227,31 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                   );
                 })}
 
-                {/* Safe area — optional green guide line centered in the art */}
-                {hasSafeArea && (
-                  <g>
-                    <rect
-                      x={(w - sw) / 2}
-                      y={(h - sh) / 2}
-                      width={sw}
-                      height={sh}
-                      fill="none"
-                      stroke="#16a34a"
-                      strokeWidth={strokeThick}
-                      strokeDasharray="10,5"
-                    />
-                    <text
-                      x={w / 2}
-                      y={(h - sh) / 2 - 8}
-                      fill="#16a34a"
-                      fontSize={Math.max(10, dimFontSize * 0.75)}
-                      fontFamily="sans-serif"
-                      textAnchor="middle"
-                      fontWeight="bold"
-                      stroke="#ffffff"
-                      strokeWidth="3"
-                      paintOrder="stroke"
-                    >
-                      ÁREA DE SEGURANÇA ({safeWidthStr} x {safeHeightStr} {unit})
-                    </text>
-                  </g>
-                )}
+                {/* Safe area — linha verde de guia com posição configurável */}
+                {hasSafeArea && (() => {
+                  const scX = toCm(safeCustomX, unit) * scale;
+                  let sx = 0;
+                  if (safeAlignX === 'center') sx = (w - sw) / 2;
+                  else if (safeAlignX === 'right') sx = w - sw;
+                  else if (safeAlignX === 'customLeft') sx = scX;
+                  else if (safeAlignX === 'customRight') sx = w - scX - sw;
+
+                  const scY = toCm(safeCustomY, unit) * scale;
+                  let sy = 0;
+                  if (safeAlignY === 'center') sy = (h - sh) / 2;
+                  else if (safeAlignY === 'bottom') sy = h - sh;
+                  else if (safeAlignY === 'customTop') sy = scY;
+                  else if (safeAlignY === 'customBottom') sy = h - scY - sh;
+
+                  return (
+                    <g>
+                      <rect x={sx} y={sy} width={sw} height={sh} fill="none" stroke="#16a34a" strokeWidth={strokeThick} strokeDasharray="10,5" />
+                      <text x={sx + sw / 2} y={sy - 8} fill="#16a34a" fontSize={Math.max(10, dimFontSize * 0.75)} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" stroke="#ffffff" strokeWidth="3" paintOrder="stroke">
+                        ÁREA DE SEGURANÇA ({safeWidthStr} x {safeHeightStr} {unit})
+                      </text>
+                    </g>
+                  );
+                })()}
 
                 {/* Guias de posicionamento de elementos — retângulos azuis de referência */}
                 {guides.map((g, gIdx) => {

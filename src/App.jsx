@@ -44,6 +44,10 @@ export default function App() {
   const [bleedNotePos, setBleedNotePos] = useLocalStorage('ag.bleedNotePos', 'center');
   const [safeWidthStr, setSafeWidthStr] = useLocalStorage('ag.safeWidthStr', '');
   const [safeHeightStr, setSafeHeightStr] = useLocalStorage('ag.safeHeightStr', '');
+  const [safeAlignX, setSafeAlignX] = useLocalStorage('ag.safeAlignX', 'center');
+  const [safeAlignY, setSafeAlignY] = useLocalStorage('ag.safeAlignY', 'center');
+  const [safeCustomX, setSafeCustomX] = useLocalStorage('ag.safeCustomX', '0');
+  const [safeCustomY, setSafeCustomY] = useLocalStorage('ag.safeCustomY', '0');
   const [zones, setZones] = useLocalStorage('ag.zones', []);
   const [guides, setGuides] = useLocalStorage('ag.guides', []);
 
@@ -78,7 +82,9 @@ export default function App() {
 
   const currentArt = {
     id: 'current', clientName, itemName, markerRef, title,
-    widthStr, heightStr, unit, bleedStr, bleedUnit, bleedNotePos, safeWidthStr, safeHeightStr, zones, guides,
+    widthStr, heightStr, unit, bleedStr, bleedUnit, bleedNotePos,
+    safeWidthStr, safeHeightStr, safeAlignX, safeAlignY, safeCustomX, safeCustomY,
+    zones, guides,
   };
 
   // Garante uma vista ativa válida sempre que a lista muda.
@@ -189,6 +195,10 @@ export default function App() {
     setBleedNotePos(art.bleedNotePos ?? 'center');
     setSafeWidthStr(art.safeWidthStr ?? '');
     setSafeHeightStr(art.safeHeightStr ?? '');
+    setSafeAlignX(art.safeAlignX ?? 'center');
+    setSafeAlignY(art.safeAlignY ?? 'center');
+    setSafeCustomX(art.safeCustomX ?? '0');
+    setSafeCustomY(art.safeCustomY ?? '0');
     setZones(art.zones ?? []);
     setGuides(art.guides ?? []);
   };
@@ -744,8 +754,8 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-green-700 mb-1">Área de Segurança <span className="font-normal text-slate-400">(opcional — linha verde dentro da arte)</span></label>
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-green-700">Área de Segurança <span className="font-normal text-slate-400">(opcional — linha verde dentro da arte)</span></label>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] text-slate-500 mb-0.5">Largura ({unit})</label>
@@ -756,6 +766,42 @@ export default function App() {
                       <input type="number" step={unit === 'm' ? '0.01' : '0.1'} min="0" value={safeHeightStr} onChange={(e) => setSafeHeightStr(e.target.value)} placeholder="Ex: 0.90" className="w-full px-2 py-1.5 border border-green-300 rounded outline-none text-sm focus:ring-1 focus:ring-green-500" />
                     </div>
                   </div>
+                  {(safeWidthStr || safeHeightStr) && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={safeAlignX} onChange={(e) => setSafeAlignX(e.target.value)} aria-label="Alinhamento horizontal da área de segurança" className="w-full px-2 py-1 bg-slate-50 border border-green-200 rounded text-xs outline-none focus:border-green-500">
+                          <option value="left">Esq</option>
+                          <option value="center">Centro H</option>
+                          <option value="right">Dir</option>
+                          <option value="customLeft">Exato da Esq.</option>
+                          <option value="customRight">Exato da Dir.</option>
+                        </select>
+                        <select value={safeAlignY} onChange={(e) => setSafeAlignY(e.target.value)} aria-label="Alinhamento vertical da área de segurança" className="w-full px-2 py-1 bg-slate-50 border border-green-200 rounded text-xs outline-none focus:border-green-500">
+                          <option value="top">Topo</option>
+                          <option value="center">Centro V</option>
+                          <option value="bottom">Base</option>
+                          <option value="customTop">Exato do Topo</option>
+                          <option value="customBottom">Exato da Base</option>
+                        </select>
+                      </div>
+                      {(safeAlignX === 'customLeft' || safeAlignX === 'customRight' || safeAlignY === 'customTop' || safeAlignY === 'customBottom') && (
+                        <div className="grid grid-cols-2 gap-2">
+                          {(safeAlignX === 'customLeft' || safeAlignX === 'customRight') ? (
+                            <div>
+                              <label className="text-[10px] font-bold text-green-700 uppercase leading-none block mb-1">Da {safeAlignX === 'customLeft' ? 'Esquerda' : 'Direita'} ({unit})</label>
+                              <input type="number" step="0.01" value={safeCustomX} onChange={(e) => setSafeCustomX(e.target.value)} className="w-full px-2 py-1 bg-white border border-green-300 rounded text-xs outline-none focus:border-green-600" />
+                            </div>
+                          ) : <div />}
+                          {(safeAlignY === 'customTop' || safeAlignY === 'customBottom') ? (
+                            <div>
+                              <label className="text-[10px] font-bold text-green-700 uppercase leading-none block mb-1">D{safeAlignY === 'customTop' ? 'o Topo' : 'a Base'} ({unit})</label>
+                              <input type="number" step="0.01" value={safeCustomY} onChange={(e) => setSafeCustomY(e.target.value)} className="w-full px-2 py-1 bg-white border border-green-300 rounded text-xs outline-none focus:border-green-600" />
+                            </div>
+                          ) : <div />}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
