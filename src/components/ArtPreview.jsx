@@ -176,6 +176,27 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                     else if (z.alignY === 'customTop') zy = cY;
                     else if (z.alignY === 'customBottom') zy = h - cY - zh;
 
+                    // Cotas de posicionamento para offsets exatos.
+                    const cotaFs = Math.max(11, Math.min(18, dimFontSize * 0.8));
+                    const cotaTk = tickSize + 2;
+                    const cotaColor = '#1f2937';
+
+                    // Cota horizontal: onde posicionar a linha (acima, abaixo ou no meio da arte).
+                    const xCotaY = zy >= 45
+                      ? zy - 28
+                      : (h - zy - zh >= 45 ? zy + zh + 28 : h / 2);
+                    const showXCota = (z.alignX === 'customLeft' && cX > 4) || (z.alignX === 'customRight' && cX > 4);
+                    const xCotaX1 = z.alignX === 'customLeft' ? 0 : zx + zw;
+                    const xCotaX2 = z.alignX === 'customLeft' ? zx : w;
+
+                    // Cota vertical: onde posicionar a linha (esquerda, direita ou no meio da arte).
+                    const yCotaX = zx >= 45
+                      ? zx - 28
+                      : (w - zx - zw >= 45 ? zx + zw + 28 : w / 2);
+                    const showYCota = (z.alignY === 'customTop' && cY > 4) || (z.alignY === 'customBottom' && cY > 4);
+                    const yCotaY1 = z.alignY === 'customTop' ? 0 : zy + zh;
+                    const yCotaY2 = z.alignY === 'customTop' ? zy : h;
+
                     return (
                       <g key={z.id}>
                         <rect x={zx} y={zy} width={zw} height={zh} fill="url(#interfPattern)" stroke={COLORS.cut} strokeWidth={strokeThin} />
@@ -187,6 +208,30 @@ const ArtPreview = React.forwardRef(function ArtPreview({ art }, ref) {
                         <text x={zx + zw / 2} y={zy + zh / 2 + textYOffset + (z.label ? centerFontSize * 0.8 : 6)} fill={COLORS.cutText} fontSize={Math.max(10, centerFontSize * 0.6)} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" stroke="#ffffff" strokeWidth="3" paintOrder="stroke" strokeLinejoin="round">
                           ({z.w} x {z.h} {unit})
                         </text>
+
+                        {/* Cota horizontal do offset X */}
+                        {showXCota && xCotaX2 > xCotaX1 && (
+                          <g stroke={cotaColor} strokeWidth={strokeThin} fill="none">
+                            <line x1={xCotaX1} y1={xCotaY} x2={xCotaX2} y2={xCotaY} />
+                            <line x1={xCotaX1} y1={xCotaY - cotaTk} x2={xCotaX1} y2={xCotaY + cotaTk} />
+                            <line x1={xCotaX2} y1={xCotaY - cotaTk} x2={xCotaX2} y2={xCotaY + cotaTk} />
+                            <text x={(xCotaX1 + xCotaX2) / 2} y={xCotaY - 10} fill={cotaColor} fontSize={cotaFs} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" stroke="#ffffff" strokeWidth="2.5" paintOrder="stroke">
+                              {z.customX} {unit}
+                            </text>
+                          </g>
+                        )}
+
+                        {/* Cota vertical do offset Y */}
+                        {showYCota && yCotaY2 > yCotaY1 && (
+                          <g stroke={cotaColor} strokeWidth={strokeThin} fill="none">
+                            <line x1={yCotaX} y1={yCotaY1} x2={yCotaX} y2={yCotaY2} />
+                            <line x1={yCotaX - cotaTk} y1={yCotaY1} x2={yCotaX + cotaTk} y2={yCotaY1} />
+                            <line x1={yCotaX - cotaTk} y1={yCotaY2} x2={yCotaX + cotaTk} y2={yCotaY2} />
+                            <text x={yCotaX - 10} y={(yCotaY1 + yCotaY2) / 2} fill={cotaColor} fontSize={cotaFs} fontFamily="sans-serif" textAnchor="middle" fontWeight="bold" stroke="#ffffff" strokeWidth="2.5" paintOrder="stroke" transform={`rotate(-90 ${yCotaX - 10} ${(yCotaY1 + yCotaY2) / 2})`}>
+                              {z.customY} {unit}
+                            </text>
+                          </g>
+                        )}
                       </g>
                     );
                   }
